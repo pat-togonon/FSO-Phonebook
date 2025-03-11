@@ -62,7 +62,7 @@ const timestamp = () => {
    
 };
 
-app.get('/info', (request, response) => {
+app.get('/', (request, response) => {
   response.send(`
   <div>
    <p>Phonebook has info for ${persons.length} people.</p>
