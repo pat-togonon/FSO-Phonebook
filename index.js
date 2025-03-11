@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const cors = require('cors');
 
 app.use(cors());
+app.use(express.static('dist'));
 
 let persons = [
     { 
@@ -62,7 +63,7 @@ const timestamp = () => {
    
 };
 
-app.get('/', (request, response) => {
+app.get('/info', (request, response) => {
   response.send(`
   <div>
    <p>Phonebook has info for ${persons.length} people.</p>
