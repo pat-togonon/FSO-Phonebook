@@ -1,33 +1,14 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
 const morgan = require('morgan');
 const cors = require('cors');
+const mongoose = require('mongoose');
 
 app.use(cors());
 app.use(express.static('dist'));
 
-let persons = [
-    { 
-      "id": "1",
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": "2",
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": "3",
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": "4",
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-];
+const Person = require('./models/person');
 
 app.use(express.json());
 
@@ -38,14 +19,15 @@ morgan.token('body', request => {
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms :body'));
 
 app.get('/api/persons', (request, response) => {
-  response.json(persons)
+  Person.find({}).then(persons => {
+    response.json(persons)
+  })  
 });
 
 const timestamp = () => {
   const now = new Date();
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thurs", "Fri", "Sat"]
   const day = dayNames[ now.getDay()];
-  // March 10, 2025 hh:mm:ss GMT+ (EasternEuropean)
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"]
   const month = monthNames[now.getMonth()];
@@ -59,86 +41,137 @@ const timestamp = () => {
 
   const zoneName = Intl.DateTimeFormat().resolvedOptions().timeZone;
   
-  return `${day} ${month} ${monthDate}, ${year} ${hour}:${min}:${sec < 10 ? 0 : ""}${sec} GMT${timezone > 0 ? "+" : "-"}${timezone} (${zoneName})`;
+  return `${day} ${month} ${monthDate}, ${year} ${hour < 10? 0 : ""}${hour}:${min < 10 ? 0 : ""}${min}:${sec < 10 ? 0 : ""}${sec} GMT${timezone > 0 ? "+" : "-"}${timezone} (${zoneName})`;
    
 };
 
-app.get('/info', (request, response) => {
-  response.send(`
-  <div>
-   <p>Phonebook has info for ${persons.length} people.</p>
-   <p>${timestamp()}</p>
-  </div>
-  `)  
+app.get('/info', (request, response, next) => {
+  Person.countDocuments({})
+  .then(count => {
+    response.send(`
+       <div>
+         <p>Phonebook has info for ${count} people.</p>
+         <p>${timestamp()}</p>
+       </div>
+    `)
+  })
+  .catch(error => next(error))
 });
 
-app.get('/api/persons/:id', (request, response) => {
-  const id = request.params.id;
-  const person = persons.find(person => person.id === id);
-
-  if (person) {  
-  response.json(person);
-  } else {
-  response.status(404).end();
-  }
+app.get('/api/persons/:id', (request, response, next) => {
+  Person.findById(request.params.id)
+    .then(person => {
+      response.json(person);
+    })
+    .catch(error => next(error));
 });
 
-app.delete('/api/persons/:id', (request, response) => {
-  const id = request.params.id;
-  const deletedPerson = persons.find(person => person.id === id);
- 
-  if (deletedPerson) {
-   persons = persons.filter(person => person.id !== id);
-   response.json(deletedPerson);
-   return;
+app.get('/api/persons/name/:name', (request, response, next) => {
+   
+   const nameToFind = decodeURIComponent(request.params.name).trim();
+      
+   Person.findOne({ name: {
+                    $regex: `^${nameToFind}$`, 
+                    $options: "i" 
+                    }
+                  })
+    .then(nameFound => {
+      if (!nameFound) {
+        return response.status(404).json({ error: 'Contact not yet on the list' });
+      } 
+      response.status(200).json(nameFound);      
+    })
+    .catch(error => next(error)); 
+  
+});
+
+app.delete('/api/persons/:id', (request, response, next) => {
+  Person.findByIdAndDelete(request.params.id)
+    .then(deletedPerson => {
+       if (deletedPerson) {
+        response.json({ message: 'Contact deleted successfully'})
+       } else {
+        response.status(400).json({ error: 'Contact is already deleted from the server'})
+       }
+    })
+    .catch(error => next(error));
+});
+
+app.post('/api/persons', (request, response, next) => {
+  const { name, number } = request.body;
+  
+  const person = new Person({
+       name: name,
+       number: number
+    });
+  
+  person.save()
+   .then(savedPerson => {
+      response.json(savedPerson);
+    })
+   .catch(error => next(error))
+    
+});
+
+app.put('/api/persons/:id', (request, response, next) => {
+  
+  const { name, number } = request.body;
+
+  Person.findOne({ name: name })
+    .then(foundPerson => {
+       Person.findByIdAndUpdate(
+        foundPerson._id, 
+        { name, number }, 
+        { new : true, runValidators: true, context: 'query'}
+       )
+         .then(updatedPerson => {         
+          if (updatedPerson) {           
+            response.json(updatedPerson)
+          } else {
+            response.status(404).end()
+          }
+         })
+         .catch(error => next(error));
+      })
+    .catch(error => next(error));
+});
+
+
+const errorHandler = (error, request, response, next) => {
+   console.error('Error is: ', error.name, error.message);
+   
+   if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'Invalid. Please try again'})
+   } else if (error.name === 'ValidationError') {
+    return response.status(400).json({ error: error.message })
    } else {
-     return response.status(400).json({
-     error: 'Already deleted from server'
-   });
-  }
-});
-
-const generateId = () => {
- return Math.floor(Math.random() * 1e12);
-
+      response.status(500).send({ error: 'Failed. Please check your server or connection.'})
+   }
+   next(error);
 };
 
-app.post('/api/persons', (request, response) => {
-  const body = request.body;
+app.use(errorHandler);
 
-  if (!body.name) {
-   return response.status(400).json({
-     error: 'Please input name'
-   });
-  }
-  
-  if (!body.number) {
-    return response.status(400).json({
-      error: 'Please input number'
-    });
-  }
+// closing mongoose when app is terminated / exited
 
-  if (persons.find(person => person.name === body.name)) {
-    return response.status(400).json({
-      error: 'name must be unique'
-     });
-  }
+const closeMongoDatabase = () => {
+  console.log('Closing Mongoose connection...');
+  mongoose.connection.close()
+    .then(() => {
+      console.log('Mongoose connection closed');
+      process.exit(0);
+    })
+    .catch(error => {
+      console.error('Failed to close Mongoose: ', error);
+      process.exit(1);
+    })
+};
 
-   const person = {
-        id: generateId().toString(),
-        name: body.name,
-        number: body.number
-   };
-  
-  persons = persons.concat(person);
-  console.log(persons);
-  response.json(person);
-
-});
+process.on('SIGINT', closeMongoDatabase);
+process.on('SIGTERM', closeMongoDatabase);
 
 
-
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
