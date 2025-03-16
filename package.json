@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "fix": "eslint index.js --fix",
+    "fix-person": "eslint models/person.js --fix"
   },
   "author": "Patricia Togonon",
   "license": "ISC",
@@ -16,5 +19,12 @@
     "express": "^4.21.2",
     "mongoose": "^8.12.1",
     "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@stylistic/eslint-plugin-js": "^4.2.0",
+    "eslint": "^9.22.0",
+    "eslint-plugin-react": "^7.37.4",
+    "globals": "^16.0.0"
   }
 }
